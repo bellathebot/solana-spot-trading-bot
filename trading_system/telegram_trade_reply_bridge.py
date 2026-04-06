@@ -8,19 +8,16 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-ROOT = Path('/home/brimigs')
-DATA_DIR = ROOT / '.trading-data'
-BRIDGE_DIR = DATA_DIR / 'telegram-bridge'
+from trading_system.runtime_config import BRIDGE_DIR, QUEUE_FILE, SESSIONS_DIR, SESSIONS_INDEX, TELEGRAM_TOKEN_FILE, TELEGRAM_TRADE_CHAT_ID, build_path_env
+
 PENDING_FILE = BRIDGE_DIR / 'pending_trade_alert.json'
 SPOT_APPROVAL_FILE = BRIDGE_DIR / 'spot_live_approval.json'
-SPOT_REVIEW_QUEUE_FILE = DATA_DIR / 'spot_recovery_manual_review.jsonl'
+SPOT_REVIEW_QUEUE_FILE = QUEUE_FILE
 SPOT_DIGEST_STATE_FILE = BRIDGE_DIR / 'spot_manual_review_digest_state.json'
 STATE_FILE = BRIDGE_DIR / 'reply_bridge_state.json'
 EXEC_LOG = BRIDGE_DIR / 'execution_history.jsonl'
-TOKEN_FILE = Path(os.environ.get('TELEGRAM_TRADE_TOKEN_FILE', str(ROOT / 'telegram.txt')))
-CHAT_ID = os.environ.get('TELEGRAM_TRADE_CHAT_ID', '2116422114')
-SESSIONS_INDEX = ROOT / '.hermes' / 'sessions' / 'sessions.json'
-SESSIONS_DIR = ROOT / '.hermes' / 'sessions'
+TOKEN_FILE = TELEGRAM_TOKEN_FILE
+CHAT_ID = TELEGRAM_TRADE_CHAT_ID
 SESSION_KEY = f'agent:main:telegram:dm:{CHAT_ID}'
 
 
@@ -263,7 +260,7 @@ def append_exec_log(entry):
 
 
 def execute_command(command: str):
-    env = {**os.environ, 'PATH': f"/home/brimigs/.hermes/node/bin:/home/brimigs/.cargo/bin:{os.environ.get('PATH','')}"}
+    env = {**os.environ, 'PATH': build_path_env()}
     res = subprocess.run(command, shell=True, text=True, capture_output=True, env=env, timeout=180)
     return {
         'exit_code': res.returncode,
