@@ -1,5 +1,7 @@
 # Solana Spot Trading Bot
 
+![Tests](https://github.com/bellathebot/solana-spot-trading-bot/actions/workflows/tests.yml/badge.svg)
+
 A paper-first, supervised-live Solana spot trading system built around Jupiter CLI execution, SQLite-backed analytics, and Telegram approval workflows.
 
 This repository packages the current spot-trading codebase into a standalone project without local runtime secrets, wallet keys, or trading data.
