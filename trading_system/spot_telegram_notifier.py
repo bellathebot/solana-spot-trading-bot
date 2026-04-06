@@ -7,13 +7,12 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-ROOT = Path('/home/brimigs')
-DATA_DIR = ROOT / '.trading-data'
-BRIDGE_DIR = DATA_DIR / 'telegram-bridge'
+from trading_system.runtime_config import BRIDGE_DIR, DB_PATH, TELEGRAM_TOKEN_FILE, TELEGRAM_TRADE_CHAT_ID
+
 STATE_FILE = BRIDGE_DIR / 'spot_executor_alert_state.json'
-TOKEN_FILE = ROOT / '.telegram' / 'telegram.txt'
-CHAT_ID = os.environ.get('TELEGRAM_TRADE_CHAT_ID', '2116422114')
-DEFAULT_DB = DATA_DIR / 'trading.db'
+TOKEN_FILE = TELEGRAM_TOKEN_FILE
+CHAT_ID = TELEGRAM_TRADE_CHAT_ID
+DEFAULT_DB = DB_PATH
 
 SYSTEM_EVENT_TYPES = {
     'spot_trade_submit_timeout_ambiguous',
