@@ -7,13 +7,11 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-sys.path.insert(0, '/home/brimigs')
-
+from trading_system.runtime_config import DB_PATH, HELIUS_BIN, build_path_env
 from trading_system.trading_db import record_whale_observation
 
-HELIUS_BIN = '/home/brimigs/.hermes/node/bin/helius'
-PATH_ENV = f"/home/brimigs/.hermes/node/bin:/home/brimigs/.cargo/bin:{os.environ.get('PATH', '')}"
-DEFAULT_DB = '/home/brimigs/.trading-data/trading.db'
+PATH_ENV = build_path_env()
+DEFAULT_DB = str(DB_PATH)
 
 WALLETS = [
     ('BONK whale A', 'H8F1aRaxpf7BHwAYWHvryDeCnmGZkS7MUHWptsFzfVzv', 'BONK'),
