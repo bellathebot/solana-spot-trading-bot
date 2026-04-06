@@ -1,0 +1,26 @@
+# Runtime data
+.trading-data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Python
+__pycache__/
+*.pyc
+.coverage
+.pytest_cache/
+
+# Node
+node_modules/
+
+# Local env / secrets
+.env
+.env.*
+telegram.txt
+*.key
+*.pem
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/
