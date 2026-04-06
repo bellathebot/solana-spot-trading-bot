@@ -7,6 +7,10 @@ import fs from 'fs';
 import { execSync, spawnSync } from 'child_process';
 import { DATA_DIR, DB_CLI, DB_PATH, JUP_BIN, PATH_ENV, REPO_ROOT } from './runtime-config.mjs';
 
+const PULLBACK_CONTINUATION_MAX_DISTANCE_PCT = parseFloat(process.env.AUTO_TRADER_PULLBACK_CONTINUATION_MAX_DISTANCE_PCT || '2');
+const PULLBACK_CONTINUATION_MIN_CHANGE_24H = parseFloat(process.env.AUTO_TRADER_PULLBACK_CONTINUATION_MIN_CHANGE_24H || '1');
+const PULLBACK_CONTINUATION_MAX_CHANGE_24H = parseFloat(process.env.AUTO_TRADER_PULLBACK_CONTINUATION_MAX_CHANGE_24H || '8');
+
 const WALLET = 'jTsP9QPb7b8XKhiexDCoA9DadkocsvFxgaabBCWxCZu';
 const PRICE_HISTORY = `${DATA_DIR}/price_history.json`;
 const ALERTS_LOG = `${DATA_DIR}/alerts.log`;
@@ -311,6 +315,29 @@ async function main() {
         };
         scoredSignals.push({ symbol: config.symbol, signal_type: 'near_buy', score: monitorScore.score, regime_tag: regimeTag, regime_detail: regimeContext.detail, regime_explanation: regimeContext.explanation, components: monitorScore.components });
         recordSignalCandidate(nearBuyCandidate);
+        const pullbackContinuationEligible = config.tier === 1 && price > config.buyBelow && distanceFromBuyPct <= PULLBACK_CONTINUATION_MAX_DISTANCE_PCT && change24h >= PULLBACK_CONTINUATION_MIN_CHANGE_24H && change24h <= PULLBACK_CONTINUATION_MAX_CHANGE_24H && shortChange !== null && shortChange <= 0.75 && ['stable', 'trend_up'].includes(regimeTag);
+        if (pullbackContinuationEligible) {
+          const pullbackScore = buildMonitorSignalScore({ signalType: 'near_buy', distancePct: distanceFromBuyPct, liquidity: p.liquidity || 0, regimeTag, tier: config.tier });
+          const pullbackCandidate = {
+            ts,
+            source: 'monitor.mjs',
+            symbol: config.symbol,
+            signal_type: 'pullback_buy',
+            strategy_tag: 'pullback_continuation_tier1',
+            side: 'buy',
+            price,
+            reference_level: config.buyBelow,
+            distance_pct: distanceFromBuyPct,
+            liquidity: p.liquidity || 0,
+            score: pullbackScore.score,
+            regime_tag: regimeTag,
+            status: 'candidate',
+            reason: 'Tier-1 pullback continuation setup from monitor',
+            metadata: { change24h, shortChange, marketChange24h, tier: config.tier, paperEligible: config.paperEligible, liveEligible: config.liveEligible, score_components: pullbackScore.components, regime_detail: regimeContext.detail, regime_explanation: regimeContext.explanation }
+          };
+          scoredSignals.push({ symbol: config.symbol, signal_type: 'pullback_buy', score: pullbackScore.score, regime_tag: regimeTag, regime_detail: regimeContext.detail, regime_explanation: regimeContext.explanation, components: pullbackScore.components });
+          recordSignalCandidate(pullbackCandidate);
+        }
       }
       if (price <= config.buyBelow) {
         const hardBuyDistancePct = percentFromLevel(price, config.buyBelow);
