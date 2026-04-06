@@ -4038,6 +4038,7 @@ COUNT(*) AS wallet_count,
        demoted_pairs = [row for row in pair_promotion_rules if row['decision'] == 'demote']
        insufficient_sample_pairs = [row for row in pair_promotion_rules if row['decision'] == 'insufficient_sample']
        spot_candidate_pairs = []
+       strategy_family_competition = defaultdict(list)
        for row in candidate_outcomes_by_pair:
            pressure = symbol_pressure_map.get(row['symbol'], 'neutral')
            execution_score = _quality_execution_score(
@@ -4048,7 +4049,7 @@ COUNT(*) AS wallet_count,
                avg_signal_tier=row.get('avg_signal_tier'),
                pressure=pressure,
            )
-           spot_candidate_pairs.append({
+           pair_row = {
                'strategy': row['strategy_tag'],
                'symbol': row['symbol'],
                'status': row['status'],
@@ -4059,6 +4060,27 @@ COUNT(*) AS wallet_count,
                'execution_score': execution_score,
                'pressure': pressure,
                'sample_sufficient': row['sample_sufficient'],
+           }
+           spot_candidate_pairs.append(pair_row)
+           strategy_family_competition[row['symbol']].append(pair_row)
+       strategy_family_competition_rows = []
+       for symbol, rows in sorted(strategy_family_competition.items()):
+           ranked = sorted(rows, key=lambda item: (float(item.get('execution_score') or 0.0), float(item.get('avg_forward_return_pct') or 0.0), float(item.get('favorable_rate') or 0.0), int(item.get('candidate_count') or 0)), reverse=True)
+           top = ranked[0] if ranked else None
+           runner_up = ranked[1] if len(ranked) > 1 else None
+           strategy_family_competition_rows.append({
+               'symbol': symbol,
+               'top_strategy': top.get('strategy') if top else None,
+               'top_status': top.get('status') if top else None,
+               'top_execution_score': top.get('execution_score') if top else None,
+               'top_avg_forward_return_pct': top.get('avg_forward_return_pct') if top else None,
+               'top_favorable_rate': top.get('favorable_rate') if top else None,
+               'runner_up_strategy': runner_up.get('strategy') if runner_up else None,
+               'runner_up_status': runner_up.get('status') if runner_up else None,
+               'runner_up_execution_score': runner_up.get('execution_score') if runner_up else None,
+               'runner_up_avg_forward_return_pct': runner_up.get('avg_forward_return_pct') if runner_up else None,
+               'runner_up_favorable_rate': runner_up.get('favorable_rate') if runner_up else None,
+               'lanes': ranked,
            })
        deployment_mode_recommendation = _deployment_mode_recommendation(
            accounting_audit['status'],
@@ -4155,6 +4177,8 @@ COUNT(*) AS wallet_count,
            'recent_scored_candidates': recent_scored_candidates,
            'candidate_outcomes_by_strategy': candidate_outcomes_by_strategy,
            'candidate_outcomes_by_symbol': candidate_outcomes_by_symbol,
+           'candidate_outcomes_by_pair': spot_candidate_pairs,
+           'strategy_family_competition': strategy_family_competition_rows,
            'candidate_volume_by_symbol': candidate_volume_summary['by_symbol'],
            'candidate_volume_by_symbol_side': candidate_volume_summary['by_symbol_side'],
            'missed_opportunities': missed_opportunities,
