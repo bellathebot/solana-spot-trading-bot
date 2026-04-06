@@ -878,12 +878,16 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+function inferRegimeContext({ change24h = 0, marketChange24h = 0 }) {
+  if (change24h <= -8 || (marketChange24h <= -5 && change24h <= -5)) return { tag: 'panic_selloff', detail: 'risk_off_capitulation', explanation: 'Deep local drop or market-wide selloff detected.' };
+  if (change24h <= -3) return { tag: 'trend_down', detail: 'stable_bearish', explanation: 'Symbol is trading with a bearish 24h trend.' };
+  if (change24h >= 8) return { tag: 'trend_up', detail: 'expansion_bullish', explanation: 'Symbol is extended upward and mean reversion quality is weaker.' };
+  if (Math.abs(change24h) >= 1.5) return { tag: 'choppy', detail: 'unstable_rotation', explanation: 'Recent movement is unstable enough to treat as choppy.' };
+  return { tag: 'stable', detail: 'stable_mean_reversion_friendly', explanation: 'Price action is calm enough for baseline mean reversion logic.' };
+}
+
 function inferRegimeTag({ change24h = 0, marketChange24h = 0 }) {
-  if (change24h <= -8 || (marketChange24h <= -5 && change24h <= -5)) return 'panic_selloff';
-  if (change24h <= -3) return 'trend_down';
-  if (change24h >= 8) return 'trend_up';
-  if (Math.abs(change24h) >= 1.5) return 'choppy';
-  return 'stable';
+  return inferRegimeContext({ change24h, marketChange24h }).tag;
 }
 
 function thresholdDistanceComponent(signalKind, nearBuyPct) {
@@ -937,6 +941,10 @@ function saturationComponent(recentSameDirectionCandidates, repeatedCandidateCap
   if (ratio <= 0.75) return 3;
   if (ratio < 1) return 1;
   return 0;
+}
+
+function summarizeScoreComponents(components = {}) {
+  return Object.entries(components).map(([key, value]) => `${key}=${Number(value || 0).toFixed(1)}`).join(', ');
 }
 
 function buildEntryScore({ signalKind, nearBuyPct, liquidity, priceImpact, symbolExecutionScore, strategyExecutionScore, pressure, regimeTag, recentSameDirectionCandidates, repeatedCandidateCap }) {
@@ -1158,7 +1166,7 @@ function currentIso() {
   return new Date().toISOString();
 }
 
-function buildSpotApprovalIntent({ decisionId, symbol, strategyTag, signalType, buyAmount, price, regimeTag, entryScore, quotePriceImpact, reason }) {
+function buildSpotApprovalIntent({ decisionId, symbol, strategyTag, signalType, buyAmount, price, regimeTag, regimeDetail, regimeExplanation, entryScore, quotePriceImpact, reason }) {
   const approvalId = `spot-approval:${decisionId}`;
   return {
     version: 1,
@@ -1173,7 +1181,11 @@ function buildSpotApprovalIntent({ decisionId, symbol, strategyTag, signalType, 
     size_usd: buyAmount,
     entry_price: price,
     regime_tag: regimeTag,
+    regime_detail: regimeDetail || null,
+    regime_explanation: regimeExplanation || null,
     entry_score: entryScore?.score ?? null,
+    entry_score_components: entryScore?.components || {},
+    entry_score_summary: summarizeScoreComponents(entryScore?.components || {}),
     quote_price_impact: quotePriceImpact,
     reason,
     commands: {
@@ -1510,7 +1522,8 @@ async function main() {
       const liquidity = priceData.liquidity || 0;
       const change24h = priceData.priceChange24h || 0;
       const marketChange24h = prices[SOL_MINT]?.priceChange24h || 0;
-      const regimeTag = inferRegimeTag({ change24h, marketChange24h });
+      const regimeContext = inferRegimeContext({ change24h, marketChange24h });
+      const regimeTag = regimeContext.tag;
       const signalTs = new Date().toISOString();
       const minLiquidityUsdForSymbol = minLiquidityThresholdUsd(symbol);
 
@@ -1718,7 +1731,8 @@ async function main() {
       const liquidity = priceData.liquidity || 0;
       const change24h = priceData.priceChange24h || 0;
       const marketChange24h = prices[SOL_MINT]?.priceChange24h || 0;
-      const regimeTag = inferRegimeTag({ change24h, marketChange24h });
+      const regimeContext = inferRegimeContext({ change24h, marketChange24h });
+      const regimeTag = regimeContext.tag;
       const signalTs = new Date().toISOString();
       const minLiquidityUsdForSymbol = minLiquidityThresholdUsd(symbol);
 
@@ -1747,12 +1761,12 @@ async function main() {
           if (pilotContext.state !== 'supportive') {
             const reason = pilotContext.state === 'mixed' ? 'tiny_live_pilot_mixed_regime' : 'tiny_live_pilot_regime_blocked';
             log(`${symbol} buy signal blocked: tiny live pilot context is ${pilotContext.state} (${pilotContext.reason}).`);
-            structuredSkip(reason, `Skipped buy for ${symbol} because tiny live pilot context is ${pilotContext.state}`, { severity: 'info', mode: MODE, symbol, strategyTag: baseStrategyTag, tier: target.tier, regimeTag, change24h, marketChange24h, pilotContext }, { ts: signalTs, source: 'auto-trade.mjs', symbol, signal_type: 'buy_setup', strategy_tag: baseStrategyTag, side: 'buy', price, reference_level: target.buyBelow, distance_pct: nearBuyPct, liquidity, regime_tag: regimeTag, status: 'skipped', reason, metadata: { mode: MODE, tier: target.tier, regimeTag, change24h, marketChange24h, pilotContext } });
+            structuredSkip(reason, `Skipped buy for ${symbol} because tiny live pilot context is ${pilotContext.state}`, { severity: 'info', mode: MODE, symbol, strategyTag: baseStrategyTag, tier: target.tier, regimeTag, regimeDetail: regimeContext.detail, regimeExplanation: regimeContext.explanation, change24h, marketChange24h, pilotContext }, { ts: signalTs, source: 'auto-trade.mjs', symbol, signal_type: 'buy_setup', strategy_tag: baseStrategyTag, side: 'buy', price, reference_level: target.buyBelow, distance_pct: nearBuyPct, liquidity, regime_tag: regimeTag, status: 'skipped', reason, metadata: { mode: MODE, tier: target.tier, regimeTag, regime_detail: regimeContext.detail, regime_explanation: regimeContext.explanation, change24h, marketChange24h, pilotContext } });
             continue;
           }
         } else if (isMeanReversionStrategy && (regimeTag === 'trend_down' || regimeTag === 'panic_selloff')) {
           log(`${symbol} buy signal blocked: regime ${regimeTag} disallows mean-reversion entries.`);
-          structuredSkip('regime_block_skip', `Skipped buy for ${symbol} because regime ${regimeTag} blocks mean-reversion`, { severity: 'info', mode: MODE, symbol, strategyTag: baseStrategyTag, tier: target.tier, regimeTag, change24h, marketChange24h }, { ts: signalTs, source: 'auto-trade.mjs', symbol, signal_type: 'buy_setup', strategy_tag: baseStrategyTag, side: 'buy', price, reference_level: target.buyBelow, distance_pct: nearBuyPct, liquidity, regime_tag: regimeTag, status: 'skipped', reason: 'regime_blocks_mean_reversion', metadata: { mode: MODE, tier: target.tier, regimeTag, change24h, marketChange24h } });
+          structuredSkip('regime_block_skip', `Skipped buy for ${symbol} because regime ${regimeTag} blocks mean-reversion`, { severity: 'info', mode: MODE, symbol, strategyTag: baseStrategyTag, tier: target.tier, regimeTag, regimeDetail: regimeContext.detail, regimeExplanation: regimeContext.explanation, change24h, marketChange24h }, { ts: signalTs, source: 'auto-trade.mjs', symbol, signal_type: 'buy_setup', strategy_tag: baseStrategyTag, side: 'buy', price, reference_level: target.buyBelow, distance_pct: nearBuyPct, liquidity, regime_tag: regimeTag, status: 'skipped', reason: 'regime_blocks_mean_reversion', metadata: { mode: MODE, tier: target.tier, regimeTag, regime_detail: regimeContext.detail, regime_explanation: regimeContext.explanation, change24h, marketChange24h } });
           continue;
         }
         if (!canAttemptBuys) {
@@ -1763,7 +1777,7 @@ async function main() {
         const liveEnabledForSymbol = target.liveEligible || (tinyPilotSymbol && TINY_LIVE_PILOT_ALLOW_LIVE);
         if (MODE === 'live' && !liveEnabledForSymbol) {
           log(`${symbol} buy signal skipped: live execution is disabled for this symbol.`);
-          structuredSkip('live_symbol_ineligible_skip', `Skipped live buy for ${symbol} because live execution is disabled`, { severity: 'warning', symbol, tier: target.tier, signalKind: buySignalKind, mode: MODE, liveEligible: liveEnabledForSymbol, tinyPilotSymbol }, { ts: signalTs, source: 'auto-trade.mjs', symbol, signal_type: 'buy_setup', strategy_tag: baseStrategyTag, side: 'buy', price, reference_level: target.buyBelow, distance_pct: nearBuyPct, liquidity, status: 'skipped', reason: 'live_symbol_ineligible', metadata: { mode: MODE, tier: target.tier, paperEligible: target.paperEligible, liveEligible: liveEnabledForSymbol, tinyPilotSymbol } });
+          structuredSkip('live_symbol_ineligible_skip', `Skipped live buy for ${symbol} because live execution is disabled`, { severity: 'warning', symbol, tier: target.tier, signalKind: buySignalKind, mode: MODE, liveEligible: liveEnabledForSymbol, tinyPilotSymbol, regimeTag, regimeDetail: regimeContext.detail, regimeExplanation: regimeContext.explanation }, { ts: signalTs, source: 'auto-trade.mjs', symbol, signal_type: 'buy_setup', strategy_tag: baseStrategyTag, side: 'buy', price, reference_level: target.buyBelow, distance_pct: nearBuyPct, liquidity, status: 'skipped', reason: 'live_symbol_ineligible', metadata: { mode: MODE, tier: target.tier, paperEligible: target.paperEligible, liveEligible: liveEnabledForSymbol, tinyPilotSymbol, regimeTag, regime_detail: regimeContext.detail, regime_explanation: regimeContext.explanation } });
           continue;
         }
         if (MODE === 'paper' && !paperExecutionEligibility(target, buySignalKind)) {
@@ -1786,8 +1800,8 @@ async function main() {
           && ['monitor', 'promote'].includes(symbolRulePreview?.decision || 'missing');
         if (pausedStrategies.has(baseStrategyTag) && !rankedPaperPauseBypass) {
           log(`${symbol} buy signal skipped: strategy ${baseStrategyTag} is paused by risk controls.`);
-          recordSystemEvent('strategy_paused_skip', 'warning', `Skipped buy for ${symbol} because ${baseStrategyTag} is paused`, { symbol, strategyTag: baseStrategyTag, tier: target.tier });
-          recordSignalCandidate({ ts: signalTs, source: 'auto-trade.mjs', symbol, signal_type: 'buy_setup', strategy_tag: baseStrategyTag, side: 'buy', price, reference_level: target.buyBelow, distance_pct: nearBuyPct, liquidity, status: 'skipped', reason: 'strategy_paused', metadata: { mode: MODE, tier: target.tier } });
+          recordSystemEvent('strategy_paused_skip', 'warning', `Skipped buy for ${symbol} because ${baseStrategyTag} is paused`, { symbol, strategyTag: baseStrategyTag, tier: target.tier, regimeTag, regimeDetail: regimeContext.detail, regimeExplanation: regimeContext.explanation });
+          recordSignalCandidate({ ts: signalTs, source: 'auto-trade.mjs', symbol, signal_type: 'buy_setup', strategy_tag: baseStrategyTag, side: 'buy', price, reference_level: target.buyBelow, distance_pct: nearBuyPct, liquidity, status: 'skipped', reason: 'strategy_paused', metadata: { mode: MODE, tier: target.tier, regimeTag, regime_detail: regimeContext.detail, regime_explanation: regimeContext.explanation } });
           continue;
         }
         if (pausedStrategies.has(baseStrategyTag) && rankedPaperPauseBypass) {
@@ -2019,10 +2033,14 @@ async function main() {
           liveEligible: target.liveEligible,
           change24h,
           marketChange24h,
+          regimeTag,
+          regime_detail: regimeContext.detail,
+          regime_explanation: regimeContext.explanation,
           pressure,
           recentSameDirectionCandidates,
           repeatedCandidateCap,
           score_components: entryScore.components,
+          score_summary: summarizeScoreComponents(entryScore.components),
           symbol_gate: symbolRule,
           strategy_gate: strategyRule,
           sizing_plan: sizingPlan,
@@ -2032,7 +2050,7 @@ async function main() {
         const minEntryScoreForSymbol = getEntryScoreThreshold({ mode: MODE, symbol, isTinyPilot: tinyPilotSymbol, regimeTag });
         if (entryScore.score < minEntryScoreForSymbol) {
           log(`${symbol} buy signal skipped: entry score too low (${entryScore.score} < ${minEntryScoreForSymbol}).`);
-          structuredSkip('entry_score_skip', `Skipped buy for ${symbol} because entry score is below threshold`, { severity: 'info', mode: MODE, symbol, strategyTag: baseStrategyTag, tier: target.tier, entryScore, minEntryScore: minEntryScoreForSymbol, pressure, regimeTag }, { ts: signalTs, source: 'auto-trade.mjs', symbol, signal_type: 'buy_setup', strategy_tag: baseStrategyTag, side: 'buy', price, reference_level: target.buyBelow, distance_pct: nearBuyPct, liquidity, score: entryScore.score, regime_tag: regimeTag, status: 'skipped', reason: 'entry_score_below_threshold', metadata: { ...scoreMetadata, minEntryScore: minEntryScoreForSymbol } });
+          structuredSkip('entry_score_skip', `Skipped buy for ${symbol} because entry score is below threshold`, { severity: 'info', mode: MODE, symbol, strategyTag: baseStrategyTag, tier: target.tier, entryScore, minEntryScore: minEntryScoreForSymbol, pressure, regimeTag, regimeDetail: regimeContext.detail, regimeExplanation: regimeContext.explanation, scoreSummary: summarizeScoreComponents(entryScore.components) }, { ts: signalTs, source: 'auto-trade.mjs', symbol, signal_type: 'buy_setup', strategy_tag: baseStrategyTag, side: 'buy', price, reference_level: target.buyBelow, distance_pct: nearBuyPct, liquidity, score: entryScore.score, regime_tag: regimeTag, status: 'skipped', reason: 'entry_score_below_threshold', metadata: { ...scoreMetadata, minEntryScore: minEntryScoreForSymbol } });
           continue;
         }
 
@@ -2066,11 +2084,13 @@ async function main() {
             buyAmount,
             price,
             regimeTag,
+            regimeDetail: regimeContext.detail,
+            regimeExplanation: regimeContext.explanation,
             entryScore,
             quotePriceImpact: priceImpact,
             reason: buyReason,
           }));
-          structuredSkip('spot_live_approval_required', `Awaiting Telegram approval for live spot buy ${symbol}`, { severity: 'warning', mode: MODE, symbol, decisionId, approvalIntent, buyAmount, price, regimeTag }, { ts: signalTs, source: 'auto-trade.mjs', symbol, signal_type: shouldPaperProbeBuy ? 'near_buy_probe' : 'hard_buy', strategy_tag: shouldPaperProbeBuy ? 'paper_near_buy_probe' : 'mean_reversion_near_buy', side: 'buy', price, reference_level: target.buyBelow, distance_pct: nearBuyPct, liquidity, score: entryScore.score, regime_tag: regimeTag, status: 'skipped', reason: 'awaiting_spot_live_approval', metadata: { ...scoreMetadata, approval_intent: approvalIntent, planned_size_usd: buyAmount, minEntryScore: minEntryScoreForSymbol } });
+          structuredSkip('spot_live_approval_required', `Awaiting Telegram approval for live spot buy ${symbol}`, { severity: 'warning', mode: MODE, symbol, decisionId, approvalIntent, buyAmount, price, regimeTag, regimeDetail: regimeContext.detail, regimeExplanation: regimeContext.explanation, scoreSummary: summarizeScoreComponents(entryScore.components) }, { ts: signalTs, source: 'auto-trade.mjs', symbol, signal_type: shouldPaperProbeBuy ? 'near_buy_probe' : 'hard_buy', strategy_tag: shouldPaperProbeBuy ? 'paper_near_buy_probe' : 'mean_reversion_near_buy', side: 'buy', price, reference_level: target.buyBelow, distance_pct: nearBuyPct, liquidity, score: entryScore.score, regime_tag: regimeTag, status: 'skipped', reason: 'awaiting_spot_live_approval', metadata: { ...scoreMetadata, approval_intent: approvalIntent, planned_size_usd: buyAmount, minEntryScore: minEntryScoreForSymbol } });
           continue;
         }
 
