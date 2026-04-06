@@ -15,18 +15,13 @@
 
 import { execSync, spawnSync } from 'child_process';
 import fs from 'fs';
+import { DB_CLI, DATA_DIR, DB_PATH, HELIUS_BIN, JUP_BIN, PATH_ENV, REPO_ROOT, TRADING_MD } from './runtime-config.mjs';
 
-const JUP_BIN = '/home/brimigs/.hermes/node/bin/jup';
-const HELIUS_BIN = '/home/brimigs/.hermes/node/bin/helius';
 const SOL_MINT = 'So11111111111111111111111111111111111111112';
 const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const WALLET = 'jTsP9QPb7b8XKhiexDCoA9DadkocsvFxgaabBCWxCZu';
 const JUP_KEY_NAME = 'trading';
-const DATA_DIR = process.env.AUTO_TRADER_DATA_DIR || '/home/brimigs/.trading-data';
-const DB_PATH = process.env.AUTO_TRADER_DB_PATH || `${DATA_DIR}/trading.db`;
-const DB_CLI = '/home/brimigs/trading_system/trading_db_cli.py';
 const TRADES_FILE = `${DATA_DIR}/auto_trades.json`;
-const TRADING_MD = process.env.AUTO_TRADER_TRADING_MD || '/home/brimigs/trading.md';
 const LOCK_FILE = `${DATA_DIR}/auto_trade.lock`;
 const KILL_SWITCH_FILE = `${DATA_DIR}/auto_trader.disabled`;
 const SMALL_ORDER_QUEUE_FILE = `${DATA_DIR}/small_order_queue.json`;
@@ -36,7 +31,6 @@ const SPOT_MANUAL_REVIEW_QUEUE_FILE = `${DATA_DIR}/spot_recovery_manual_review.j
 const TELEGRAM_BRIDGE_DIR = `${DATA_DIR}/telegram-bridge`;
 const SPOT_LIVE_APPROVAL_FILE = `${TELEGRAM_BRIDGE_DIR}/spot_live_approval.json`;
 const TX_STATUS_DIR = process.env.AUTO_TRADER_TX_STATUS_DIR || '';
-const PATH_ENV = `/home/brimigs/.hermes/node/bin:/home/brimigs/.cargo/bin:${process.env.PATH}`;
 const EASTER_EGG_TAG = 'ethan was here';
 const MIN_SOL_FEE_RESERVE = 0.05;
 const MIN_USDC_RESERVE = 5.0;
@@ -541,7 +535,7 @@ function runDbCli(command, payload) {
     const result = spawnSync('python', [DB_CLI, command, '--db', DB_PATH], {
       input: JSON.stringify(payload),
       encoding: 'utf-8',
-      env: { ...process.env, PATH: PATH_ENV, PYTHONPATH: '/home/brimigs' },
+      env: { ...process.env, PATH: PATH_ENV, PYTHONPATH: REPO_ROOT },
       timeout: 30000,
     });
     if (result.status !== 0) {
@@ -560,7 +554,7 @@ function runDbCliJson(command, payload) {
     const result = spawnSync('python', [DB_CLI, command, '--db', DB_PATH], {
       input: JSON.stringify(payload),
       encoding: 'utf-8',
-      env: { ...process.env, PATH: PATH_ENV, PYTHONPATH: '/home/brimigs' },
+      env: { ...process.env, PATH: PATH_ENV, PYTHONPATH: REPO_ROOT },
       timeout: 30000,
     });
     if (result.status !== 0) {
@@ -593,7 +587,7 @@ function getStrategyControls() {
   try {
     const result = spawnSync('python', [DB_CLI, 'strategy-controls', '--db', DB_PATH, '--min-trades', String(STRATEGY_MIN_TRADES), '--min-realized-pnl-usd', String(STRATEGY_MIN_REALIZED_PNL_USD)], {
       encoding: 'utf-8',
-      env: { ...process.env, PATH: PATH_ENV, PYTHONPATH: '/home/brimigs' },
+      env: { ...process.env, PATH: PATH_ENV, PYTHONPATH: REPO_ROOT },
       timeout: 120000,
       maxBuffer: 20 * 1024 * 1024,
     });
@@ -612,7 +606,7 @@ function getOpenPositions() {
   try {
     const result = spawnSync('python', [DB_CLI, 'open-positions', '--db', DB_PATH], {
       encoding: 'utf-8',
-      env: { ...process.env, PATH: PATH_ENV, PYTHONPATH: '/home/brimigs' },
+      env: { ...process.env, PATH: PATH_ENV, PYTHONPATH: REPO_ROOT },
       timeout: 30000,
     });
     if (result.status !== 0) {
@@ -630,7 +624,7 @@ function getRecordedTradesFromDb(limit = 200) {
   try {
     const result = spawnSync('python', [DB_CLI, 'recent-trades', '--db', DB_PATH, '--limit', String(limit)], {
       encoding: 'utf-8',
-      env: { ...process.env, PATH: PATH_ENV, PYTHONPATH: '/home/brimigs' },
+      env: { ...process.env, PATH: PATH_ENV, PYTHONPATH: REPO_ROOT },
       timeout: 30000,
     });
     if (result.status !== 0) {
@@ -650,7 +644,7 @@ function getRecentSystemEvents(eventType, limit = 50) {
     if (eventType) args.push('--event-type', eventType);
     const result = spawnSync(args[0], args.slice(1), {
       encoding: 'utf-8',
-      env: { ...process.env, PATH: PATH_ENV, PYTHONPATH: '/home/brimigs' },
+      env: { ...process.env, PATH: PATH_ENV, PYTHONPATH: REPO_ROOT },
       timeout: 30000,
     });
     if (result.status !== 0) {
