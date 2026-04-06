@@ -2617,6 +2617,12 @@ PRODUCTION_STRATEGY_RULES = {
        'entry_rule': 'Probe only when price is within the configured near-buy band above the hard threshold, symbol/tier allows probes, and ranked-paper gates remain open.',
        'exit_rule': 'Reduce on partial-profit, exit on stop-loss/time-stop, or upgrade to full hard-buy only on renewed confirmation.',
    },
+   'pullback_continuation_tier1': {
+       'product_type': 'spot',
+       'family': 'pullback_continuation',
+       'entry_rule': 'Tier-1 pullback continuation only when price stays above the hard threshold, distance is narrow, day trend is positive, and regime remains stable/trend_up.',
+       'exit_rule': 'Exit on take-profit threshold, stop-loss, time-stop, or policy/risk de-risking.',
+   },
    'perp_short_continuation': {
        'product_type': 'perps',
        'family': 'bearish_perps_continuation',
