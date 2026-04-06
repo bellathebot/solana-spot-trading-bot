@@ -65,12 +65,24 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+function inferRegimeContext({ change24h = 0, shortChange = null, marketChange24h = 0 }) {
+  if (change24h <= -8 || (marketChange24h <= -5 && change24h <= -5)) {
+    return { tag: 'panic_selloff', detail: 'risk_off_capitulation', explanation: 'Deep local drop or market-wide selloff detected.' };
+  }
+  if (change24h <= -3 || (shortChange !== null && shortChange <= -2)) {
+    return { tag: 'trend_down', detail: 'stable_bearish', explanation: 'Symbol is trading with a bearish local or 24h trend.' };
+  }
+  if (change24h >= 8 || (shortChange !== null && shortChange >= 3)) {
+    return { tag: 'trend_up', detail: 'expansion_bullish', explanation: 'Symbol is extended upward and mean reversion quality is weaker.' };
+  }
+  if (shortChange !== null && Math.abs(shortChange) >= 1.5) {
+    return { tag: 'choppy', detail: 'unstable_rotation', explanation: 'Short-horizon movement is unstable enough to treat as choppy.' };
+  }
+  return { tag: 'stable', detail: 'stable_mean_reversion_friendly', explanation: 'Price action is calm enough for baseline mean reversion logic.' };
+}
+
 function inferRegimeTag({ change24h = 0, shortChange = null, marketChange24h = 0 }) {
-  if (change24h <= -8 || (marketChange24h <= -5 && change24h <= -5)) return 'panic_selloff';
-  if (change24h <= -3 || (shortChange !== null && shortChange <= -2)) return 'trend_down';
-  if (change24h >= 8 || (shortChange !== null && shortChange >= 3)) return 'trend_up';
-  if (shortChange !== null && Math.abs(shortChange) >= 1.5) return 'choppy';
-  return 'stable';
+  return inferRegimeContext({ change24h, shortChange, marketChange24h }).tag;
 }
 
 function thresholdDistanceScore(signalType, distancePct) {
@@ -261,7 +273,8 @@ async function main() {
     const change24h = p.priceChange24h || 0;
     const prevPrice = prevSnapshot?.prices?.[config.symbol]?.price || null;
     const shortChange = prevPrice ? ((price - prevPrice) / prevPrice) * 100 : null;
-    const regimeTag = inferRegimeTag({ change24h, shortChange, marketChange24h });
+    const regimeContext = inferRegimeContext({ change24h, shortChange, marketChange24h });
+    const regimeTag = regimeContext.tag;
     const holding = holdingsByMint.get(mint) || holdingsBySymbol.get(config.symbol);
     const holdingValue = holding?.value || 0;
     const hasPosition = holdingValue > 0;
@@ -294,9 +307,9 @@ async function main() {
           regime_tag: regimeTag,
           status: 'candidate',
           reason: 'Near-buy signal from monitor',
-          metadata: { change24h, shortChange, marketChange24h, tier: config.tier, paperEligible: config.paperEligible, liveEligible: config.liveEligible, score_components: monitorScore.components }
+          metadata: { change24h, shortChange, marketChange24h, tier: config.tier, paperEligible: config.paperEligible, liveEligible: config.liveEligible, score_components: monitorScore.components, regime_detail: regimeContext.detail, regime_explanation: regimeContext.explanation }
         };
-        scoredSignals.push({ symbol: config.symbol, signal_type: 'near_buy', score: monitorScore.score, regime_tag: regimeTag, components: monitorScore.components });
+        scoredSignals.push({ symbol: config.symbol, signal_type: 'near_buy', score: monitorScore.score, regime_tag: regimeTag, regime_detail: regimeContext.detail, regime_explanation: regimeContext.explanation, components: monitorScore.components });
         recordSignalCandidate(nearBuyCandidate);
       }
       if (price <= config.buyBelow) {
@@ -318,9 +331,9 @@ async function main() {
           regime_tag: regimeTag,
           status: 'candidate',
           reason: 'Hard buy signal from monitor',
-          metadata: { change24h, shortChange, marketChange24h, tier: config.tier, paperEligible: config.paperEligible, liveEligible: config.liveEligible, score_components: monitorScore.components }
+          metadata: { change24h, shortChange, marketChange24h, tier: config.tier, paperEligible: config.paperEligible, liveEligible: config.liveEligible, score_components: monitorScore.components, regime_detail: regimeContext.detail, regime_explanation: regimeContext.explanation }
         };
-        scoredSignals.push({ symbol: config.symbol, signal_type: 'hard_buy', score: monitorScore.score, regime_tag: regimeTag, components: monitorScore.components });
+        scoredSignals.push({ symbol: config.symbol, signal_type: 'hard_buy', score: monitorScore.score, regime_tag: regimeTag, regime_detail: regimeContext.detail, regime_explanation: regimeContext.explanation, components: monitorScore.components });
         recordSignalCandidate(hardBuyCandidate);
       }
     }
