@@ -5,15 +5,11 @@
 
 import fs from 'fs';
 import { execSync, spawnSync } from 'child_process';
+import { DATA_DIR, DB_CLI, DB_PATH, JUP_BIN, PATH_ENV, REPO_ROOT } from './runtime-config.mjs';
 
 const WALLET = 'jTsP9QPb7b8XKhiexDCoA9DadkocsvFxgaabBCWxCZu';
-const JUP_BIN = '/home/brimigs/.hermes/node/bin/jup';
-const DATA_DIR = '/home/brimigs/.trading-data';
-const DB_PATH = `${DATA_DIR}/trading.db`;
-const DB_CLI = '/home/brimigs/trading_system/trading_db_cli.py';
 const PRICE_HISTORY = `${DATA_DIR}/price_history.json`;
 const ALERTS_LOG = `${DATA_DIR}/alerts.log`;
-const PATH_ENV = `/home/brimigs/.hermes/node/bin:/home/brimigs/.cargo/bin:${process.env.PATH}`;
 const EASTER_EGG_TAG = 'ethan was here';
 
 const flags = process.argv.slice(2);
@@ -153,7 +149,7 @@ function runDbCli(command, payload) {
     const result = spawnSync('python', [DB_CLI, command, '--db', DB_PATH], {
       input: JSON.stringify(payload),
       encoding: 'utf-8',
-      env: { ...process.env, PATH: PATH_ENV, PYTHONPATH: '/home/brimigs' },
+      env: { ...process.env, PATH: PATH_ENV, PYTHONPATH: REPO_ROOT },
       timeout: 30000,
     });
     if (result.status !== 0) {
