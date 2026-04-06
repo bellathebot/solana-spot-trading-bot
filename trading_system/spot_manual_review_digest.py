@@ -7,13 +7,11 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-ROOT = Path('/home/brimigs')
-DATA_DIR = ROOT / '.trading-data'
-QUEUE_FILE = DATA_DIR / 'spot_recovery_manual_review.jsonl'
-BRIDGE_DIR = DATA_DIR / 'telegram-bridge'
+from trading_system.runtime_config import BRIDGE_DIR, QUEUE_FILE, TELEGRAM_TOKEN_FILE, TELEGRAM_TRADE_CHAT_ID
+
 STATE_FILE = BRIDGE_DIR / 'spot_manual_review_digest_state.json'
-TOKEN_FILE = ROOT / '.telegram' / 'telegram.txt'
-CHAT_ID = os.environ.get('TELEGRAM_TRADE_CHAT_ID', '2116422114')
+TOKEN_FILE = TELEGRAM_TOKEN_FILE
+CHAT_ID = TELEGRAM_TRADE_CHAT_ID
 
 def load_json(path: Path, default):
     if not path.exists():
