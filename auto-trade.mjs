@@ -1286,6 +1286,11 @@ function getGateRule(ruleMap, name) {
   return ruleMap.get(`${name}::candidate`) || ruleMap.get(`${name}::executed`) || null;
 }
 
+function getPairGateRule(ruleMap, strategyTag, symbol) {
+  const key = `${strategyTag}::${symbol}`;
+  return ruleMap.get(`${key}::candidate`) || ruleMap.get(`${key}::executed`) || ruleMap.get(`${key}::skipped`) || null;
+}
+
 function structuredSkip(eventType, message, metadata, signalCandidate = null) {
   recordSystemEvent(eventType, metadata?.severity || 'warning', message, metadata || {});
   if (signalCandidate) {
@@ -1426,6 +1431,7 @@ async function main() {
     const pausedStrategies = new Set((strategyControls.paused_strategies || []).map(s => s.strategy_tag));
     const promotionRules = new Map((strategyControls.promotion_rules || []).map(r => [`${r.name}::${r.status}`, r]));
     const symbolPromotionRules = new Map((strategyControls.symbol_promotion_rules || []).map(r => [`${r.name}::${r.status}`, r]));
+    const pairPromotionRules = new Map((strategyControls.pair_promotion_rules || []).map(r => [`${r.name}::${r.status}`, r]));
     const executionScores = new Map((strategyControls.execution_scores || []).map(r => [`${r.symbol}::${r.status}`, r]));
     const candidateVolume = buildCandidateVolumeMaps(strategyControls);
     const openPositions = getOpenPositions();
@@ -1793,20 +1799,23 @@ async function main() {
           continue;
         }
         const strategyRule = getGateRule(promotionRules, baseStrategyTag);
+        const pairRule = getPairGateRule(pairPromotionRules, baseStrategyTag, symbol);
+        const effectiveStrategyRule = pairRule || strategyRule;
         const symbolRulePreview = getGateRule(symbolPromotionRules, symbol);
         const rankedPaperPauseBypass = MODE === 'paper'
           && PAPER_ALLOWLIST.has(symbol)
-          && ['monitor', 'promote'].includes(strategyRule?.decision || 'missing')
+          && ['monitor', 'promote'].includes(effectiveStrategyRule?.decision || 'missing')
           && ['monitor', 'promote'].includes(symbolRulePreview?.decision || 'missing');
-        if (pausedStrategies.has(baseStrategyTag) && !rankedPaperPauseBypass) {
+        const pairAllowsStrategyBypass = ['monitor', 'promote'].includes(pairRule?.decision || 'missing');
+        if (pausedStrategies.has(baseStrategyTag) && !pairRule && !rankedPaperPauseBypass) {
           log(`${symbol} buy signal skipped: strategy ${baseStrategyTag} is paused by risk controls.`);
           recordSystemEvent('strategy_paused_skip', 'warning', `Skipped buy for ${symbol} because ${baseStrategyTag} is paused`, { symbol, strategyTag: baseStrategyTag, tier: target.tier, regimeTag, regimeDetail: regimeContext.detail, regimeExplanation: regimeContext.explanation });
           recordSignalCandidate({ ts: signalTs, source: 'auto-trade.mjs', symbol, signal_type: 'buy_setup', strategy_tag: baseStrategyTag, side: 'buy', price, reference_level: target.buyBelow, distance_pct: nearBuyPct, liquidity, status: 'skipped', reason: 'strategy_paused', metadata: { mode: MODE, tier: target.tier, regimeTag, regime_detail: regimeContext.detail, regime_explanation: regimeContext.explanation } });
           continue;
         }
-        if (pausedStrategies.has(baseStrategyTag) && rankedPaperPauseBypass) {
+        if (pausedStrategies.has(baseStrategyTag) && (pairAllowsStrategyBypass || rankedPaperPauseBypass)) {
           log(`${symbol} ranked-paper path bypassing paused strategy ${baseStrategyTag}.`);
-          recordSystemEvent('ranked_paper_pause_bypass', 'info', `Ranked-paper path allowed ${symbol} despite paused strategy ${baseStrategyTag}`, { mode: MODE, symbol, strategyTag: baseStrategyTag, strategyRule, symbolRule: symbolRulePreview, tier: target.tier });
+          recordSystemEvent('ranked_paper_pause_bypass', 'info', `Ranked-paper path allowed ${symbol} despite paused strategy ${baseStrategyTag}`, { mode: MODE, symbol, strategyTag: baseStrategyTag, strategyRule, pairRule, symbolRule: symbolRulePreview, tier: target.tier });
         }
         const strategySkipCandidate = {
           ts: signalTs,
@@ -1823,27 +1832,28 @@ async function main() {
           status: 'skipped',
         };
         const liveStrategyDemotionOverride = MODE === 'live' && tinyPilotSymbol && TINY_LIVE_PILOT_DEMOTION_OVERRIDE_SYMBOLS.has(symbol);
-        if (strategyRule && strategyRule.decision === 'demote' && !liveStrategyDemotionOverride) {
+        if (effectiveStrategyRule && effectiveStrategyRule.decision === 'demote' && !liveStrategyDemotionOverride) {
           log(`${symbol} buy signal skipped: strategy ${baseStrategyTag} is demoted by promotion rules.`);
-          structuredSkip('strategy_demoted_skip', `Skipped buy for ${symbol} because ${baseStrategyTag} is demoted`, { severity: 'warning', mode: MODE, symbol, strategyTag: baseStrategyTag, tier: target.tier, gate: strategyRule }, { ...strategySkipCandidate, reason: 'strategy_demoted', metadata: { mode: MODE, tier: target.tier, gate: strategyRule } });
+          structuredSkip('strategy_demoted_skip', `Skipped buy for ${symbol} because ${baseStrategyTag} is demoted`, { severity: 'warning', mode: MODE, symbol, strategyTag: baseStrategyTag, tier: target.tier, gate: effectiveStrategyRule, pairRule }, { ...strategySkipCandidate, reason: 'strategy_demoted', metadata: { mode: MODE, tier: target.tier, gate: effectiveStrategyRule, pair_gate: pairRule } });
           continue;
         }
-        if (strategyRule && strategyRule.decision === 'demote' && liveStrategyDemotionOverride) {
+        if (effectiveStrategyRule && effectiveStrategyRule.decision === 'demote' && liveStrategyDemotionOverride) {
           recordSystemEvent('tiny_live_strategy_demotion_override', 'warning', `Tiny live pilot override bypassed strategy demotion for ${symbol}`, {
             symbol,
             strategyTag: baseStrategyTag,
             tier: target.tier,
-            gate: strategyRule,
+            gate: effectiveStrategyRule,
+            pairRule,
           });
         }
-        if (MODE === 'paper' && !strategyRule && !ALLOW_INSUFFICIENT_SAMPLE_PAPER) {
+        if (MODE === 'paper' && !effectiveStrategyRule && !ALLOW_INSUFFICIENT_SAMPLE_PAPER) {
           log(`${symbol} buy signal observation-only: strategy ${baseStrategyTag} has no gate rule yet.`);
           structuredSkip('strategy_missing_gate_rule_skip', `Observation-only for ${symbol}: ${baseStrategyTag} has no gate rule yet`, { severity: 'info', mode: MODE, symbol, strategyTag: baseStrategyTag, tier: target.tier, allowInsufficientSamplePaper: ALLOW_INSUFFICIENT_SAMPLE_PAPER, missingGateRule: true }, { ...strategySkipCandidate, reason: 'strategy_missing_gate_rule_observation_only', metadata: { mode: MODE, tier: target.tier, missingGateRule: true, allowInsufficientSamplePaper: ALLOW_INSUFFICIENT_SAMPLE_PAPER } });
           continue;
         }
-        if (strategyRule && strategyRule.sample_sufficient === false && !ALLOW_INSUFFICIENT_SAMPLE_PAPER) {
+        if (effectiveStrategyRule && effectiveStrategyRule.sample_sufficient === false && !ALLOW_INSUFFICIENT_SAMPLE_PAPER) {
           log(`${symbol} buy signal observation-only: strategy ${baseStrategyTag} has insufficient sample.`);
-          structuredSkip('strategy_insufficient_sample_skip', `Observation-only for ${symbol}: ${baseStrategyTag} has insufficient sample`, { severity: 'info', mode: MODE, symbol, strategyTag: baseStrategyTag, tier: target.tier, allowInsufficientSamplePaper: ALLOW_INSUFFICIENT_SAMPLE_PAPER, gate: strategyRule }, { ...strategySkipCandidate, reason: 'strategy_insufficient_sample_observation_only', metadata: { mode: MODE, tier: target.tier, gate: strategyRule, allowInsufficientSamplePaper: ALLOW_INSUFFICIENT_SAMPLE_PAPER } });
+          structuredSkip('strategy_insufficient_sample_skip', `Observation-only for ${symbol}: ${baseStrategyTag} has insufficient sample`, { severity: 'info', mode: MODE, symbol, strategyTag: baseStrategyTag, tier: target.tier, allowInsufficientSamplePaper: ALLOW_INSUFFICIENT_SAMPLE_PAPER, gate: effectiveStrategyRule, pairRule }, { ...strategySkipCandidate, reason: 'strategy_insufficient_sample_observation_only', metadata: { mode: MODE, tier: target.tier, gate: effectiveStrategyRule, pair_gate: pairRule, allowInsufficientSamplePaper: ALLOW_INSUFFICIENT_SAMPLE_PAPER } });
           continue;
         }
         const strategyLastTrade = lastTradeTimeForStrategy(trades, baseStrategyTag);
@@ -1910,7 +1920,7 @@ async function main() {
             symbolDecision: symbolRule?.decision || 'missing',
           });
         }
-        if (MODE === 'paper' && !isPaperAllowlisted(symbol, symbolRule, strategyRule)) {
+        if (MODE === 'paper' && !isPaperAllowlisted(symbol, symbolRule, effectiveStrategyRule)) {
           const rankedPaperGate = {
             allowlist: Array.from(PAPER_ALLOWLIST),
             symbolDecision: symbolRule?.decision || 'missing',
@@ -1967,7 +1977,7 @@ async function main() {
           usdcSpendable,
           portfolioTotalValue: portfolio.totalValue,
           tierPolicy,
-          strategyRule,
+          strategyRule: effectiveStrategyRule,
           executionScore,
           tinyPilotSymbol,
           shouldPaperProbeBuy,
@@ -2043,6 +2053,8 @@ async function main() {
           score_summary: summarizeScoreComponents(entryScore.components),
           symbol_gate: symbolRule,
           strategy_gate: strategyRule,
+          pair_gate: pairRule,
+          effective_strategy_gate: effectiveStrategyRule,
           sizing_plan: sizingPlan,
           strategy_rulebook: STRATEGY_RULES[baseStrategyTag] || null,
           position_sizing_framework: POSITION_SIZING_FRAMEWORK,
