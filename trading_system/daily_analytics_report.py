@@ -460,6 +460,20 @@ def main() -> None:
     else:
         print('- none')
 
+    print('\nStrategy family competition by symbol:')
+    if report.get('strategy_family_competition'):
+        for row in report['strategy_family_competition'][:10]:
+            top_avg = float(row.get('top_avg_forward_return_pct') or 0)
+            top_fav = float(row.get('top_favorable_rate') or 0)
+            runner_avg = float(row.get('runner_up_avg_forward_return_pct') or 0)
+            runner_fav = float(row.get('runner_up_favorable_rate') or 0)
+            print(
+                f"- {row['symbol']}: top={row.get('top_strategy')}[{row.get('top_status')}] score={row.get('top_execution_score')} avg={top_avg:.2f}% fav={top_fav:.2f} "
+                f"runner_up={row.get('runner_up_strategy')}[{row.get('runner_up_status')}] score={row.get('runner_up_execution_score')} avg={runner_avg:.2f}% fav={runner_fav:.2f}"
+            )
+    else:
+        print('- none')
+
     print('\nExecution scores:')
     if report['execution_scores']:
         for row in report['execution_scores'][:10]:
