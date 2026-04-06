@@ -26,6 +26,10 @@ The main spot bot now reads runtime paths from environment variables with sensib
   - used by the main Node spot entrypoints
 - `trading_system/runtime_config.py`
   - used by the main Python spot operator scripts
+- `config/spot-bot.example.json`
+  - example JSON config file for file-based configuration
+
+If you prefer a config file over environment variables, copy the example file to `config/local.json` or point `SPOT_BOT_CONFIG_FILE` at your own JSON file.
 
 ## Quick bootstrap
 
