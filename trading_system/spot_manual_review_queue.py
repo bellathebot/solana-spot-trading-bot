@@ -4,9 +4,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-ROOT = Path('/home/brimigs')
-DATA_DIR = ROOT / '.trading-data'
-QUEUE_FILE = DATA_DIR / 'spot_recovery_manual_review.jsonl'
+from trading_system.runtime_config import QUEUE_FILE
 SNOOZE_EXPIRE_HOURS = 24
 SLA_BREACH_HOURS = 12
 PRIORITY_RANK = {
