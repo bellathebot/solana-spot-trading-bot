@@ -10,15 +10,13 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-ROOT = Path('/home/brimigs')
-DATA_DIR = ROOT / '.trading-data'
-BRIDGE_DIR = DATA_DIR / 'telegram-bridge'
+from trading_system.runtime_config import BRIDGE_DIR, JUP_BIN, MONITOR_PATH, TELEGRAM_TOKEN_FILE, TELEGRAM_TRADE_CHAT_ID, build_path_env
+
 PENDING_FILE = BRIDGE_DIR / 'pending_trade_alert.json'
 ALERT_LOG = BRIDGE_DIR / 'alert_history.jsonl'
-TOKEN_FILE = ROOT / 'telegram.txt'
-CHAT_ID = os.environ.get('TELEGRAM_TRADE_CHAT_ID', '2116422114')
-JUP_BIN = '/home/brimigs/.hermes/node/bin/jup'
-MONITOR = ROOT / 'monitor.mjs'
+TOKEN_FILE = TELEGRAM_TOKEN_FILE
+CHAT_ID = TELEGRAM_TRADE_CHAT_ID
+MONITOR = MONITOR_PATH
 JUP_KEY = 'trading'
 
 WATCHLIST = {
@@ -32,7 +30,7 @@ WATCHLIST = {
 
 
 def run(cmd: str) -> str:
-    env = {**os.environ, 'PATH': f"/home/brimigs/.hermes/node/bin:/home/brimigs/.cargo/bin:{os.environ.get('PATH','')}"}
+    env = {**os.environ, 'PATH': build_path_env()}
     res = subprocess.run(cmd, shell=True, text=True, capture_output=True, env=env, timeout=120)
     if res.returncode != 0:
         raise RuntimeError((res.stderr or res.stdout).strip())
