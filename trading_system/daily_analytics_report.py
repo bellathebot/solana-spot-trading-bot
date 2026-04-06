@@ -5,13 +5,11 @@ import sqlite3
 import sys
 from pathlib import Path
 
-ROOT = Path('/home/brimigs')
-DATA_DIR = Path(__import__('os').environ.get('AUTO_TRADER_DATA_DIR', str(ROOT / '.trading-data')))
+from trading_system.runtime_config import DATA_DIR, DB_PATH
 SPOT_NOTIFIER_HEALTH_STATE = DATA_DIR / 'telegram-bridge' / 'spot_notifier_health_state.json'
 SPOT_MANUAL_REVIEW_QUEUE = DATA_DIR / 'spot_recovery_manual_review.jsonl'
 LIVE_TRADABLE_ASSETS = ['SOL', 'BTC', 'JUP', 'PYTH', 'RAY', 'WIF']
 
-sys.path.insert(0, '/home/brimigs')
 
 from trading_system.trading_db import get_daily_analytics
 
@@ -114,7 +112,7 @@ def _latest_live_candidate_summary(db_path: Path) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description='Print daily trading analytics from SQLite')
-    parser.add_argument('--db', default='/home/brimigs/.trading-data/trading.db')
+    parser.add_argument('--db', default=str(DB_PATH))
     parser.add_argument('--since-ts', default=None)
     args = parser.parse_args()
 
