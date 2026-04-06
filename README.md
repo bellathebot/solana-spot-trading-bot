@@ -32,6 +32,7 @@ This repository packages the current spot-trading codebase into a standalone pro
 - `monitor.mjs`
 - `trading_system/`
 - `docs/`
+- `config/`
 - `package.json`
 
 See `docs/architecture.md`, `docs/operations.md`, and `docs/setup.md` for more detail.
@@ -90,7 +91,9 @@ npm install
 - `jup`
 - `helius`
 
-3. Create a writable trading data directory
+3. Optionally copy `config/spot-bot.example.json` to `config/local.json` and adjust paths / credentials
+
+4. Create a writable trading data directory
 
 Example expected runtime paths in the current code:
 
