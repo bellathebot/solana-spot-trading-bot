@@ -4,9 +4,9 @@ import json
 import subprocess
 from pathlib import Path
 
-ROOT = Path('/home/brimigs')
-DATA_DIR = ROOT / '.trading-data'
-DEFAULT_STATE = DATA_DIR / 'telegram-bridge' / 'spot_runtime_health_state.json'
+from trading_system.runtime_config import BRIDGE_DIR, JUP_BIN, build_path_env
+
+DEFAULT_STATE = BRIDGE_DIR / 'spot_runtime_health_state.json'
 
 
 def run(cmd: str) -> tuple[int, str, str]:
@@ -33,9 +33,9 @@ def main():
     parser.add_argument('--state-file', default=str(DEFAULT_STATE))
     args = parser.parse_args()
 
-    env_prefix = 'export PATH="/home/brimigs/.hermes/node/bin:/home/brimigs/.cargo/bin:$PATH" && '
-    key_cmd = env_prefix + 'jup -f json keys list'
-    portfolio_cmd = env_prefix + 'jup -f json spot portfolio --key trading'
+    env_prefix = f'export PATH="{build_path_env()}" && '
+    key_cmd = env_prefix + f'{JUP_BIN} -f json keys list'
+    portfolio_cmd = env_prefix + f'{JUP_BIN} -f json spot portfolio --key trading'
 
     key_rc, key_out, key_err = run(key_cmd)
     port_rc, port_out, port_err = run(portfolio_cmd)
