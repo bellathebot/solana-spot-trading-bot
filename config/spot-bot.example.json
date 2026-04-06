@@ -1,0 +1,14 @@
+{
+  "HERMES_SPOT_BOT_HOME": "/home/your-user",
+  "AUTO_TRADER_DATA_DIR": "/home/your-user/.trading-data",
+  "AUTO_TRADER_DB_PATH": "/home/your-user/.trading-data/trading.db",
+  "AUTO_TRADER_DB_CLI": "/path/to/repo/trading_system/trading_db_cli.py",
+  "AUTO_TRADER_TRADING_MD": "/path/to/repo/trading.md",
+  "JUP_BIN": "jup",
+  "HELIUS_BIN": "helius",
+  "JUP_BIN_DIR": "/home/your-user/.hermes/node/bin",
+  "HELIUS_BIN_DIR": "/home/your-user/.hermes/node/bin",
+  "TELEGRAM_TOKEN_FILE": "/path/to/repo/telegram.txt",
+  "TELEGRAM_TRADE_CHAT_ID": "123456789",
+  "SPOT_MONITOR_PATH": "/path/to/repo/monitor.mjs"
+}
