@@ -4,9 +4,9 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-ROOT = Path('/home/brimigs')
-DATA_DIR = ROOT / '.trading-data'
-STATE_FILE = DATA_DIR / 'telegram-bridge' / 'spot_manual_review_digest_state.json'
+from trading_system.runtime_config import BRIDGE_DIR
+
+STATE_FILE = BRIDGE_DIR / 'spot_manual_review_digest_state.json'
 
 
 def load_json(path: Path, default):
