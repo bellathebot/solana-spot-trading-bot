@@ -150,7 +150,11 @@ def main() -> None:
     print('\nRanked live spot candidates:')
     if ranked_live_assets:
         for idx, row in enumerate(ranked_live_assets[:5], start=1):
-            print(f"- #{idx} {row['symbol']}: status={row['live_status']} distance_to_buy={row['distance_to_buy_pct']:.2f}% liq=${_display_money(row['liquidity']):.2f}")
+            print(
+                f"- #{idx} {row['symbol']}: status={row['live_status']} distance_to_buy={row['distance_to_buy_pct']:.2f}% "
+                f"next_move_to_trigger={row['distance_to_buy_pct']:.2f}% liq=${_display_money(row['liquidity']):.2f} "
+                f"live={row.get('live_eligible', True)} paper={row.get('paper_eligible', True)}"
+            )
     else:
         print('- none')
 
@@ -162,22 +166,37 @@ def main() -> None:
     blocked_candidates = latest_live_summary.get('blocked_candidates') or []
     if promotion_candidates:
         for row in promotion_candidates[:5]:
-            print(f"- promotion {row['symbol']}: status={row.get('status')} blocker_type={row.get('blocker_type', 'none')} blocker={row.get('blocker')} dist={_display_money(row.get('distance_pct')):.2f}%")
+            print(
+                f"- promotion {row['symbol']}: status={row.get('status')} blocker_type={row.get('blocker_type', 'none')} "
+                f"blocker={row.get('blocker')} dist={_display_money(row.get('distance_pct')):.2f}% "
+                f"move_to_trigger={_display_money(row.get('next_price_move_pct')):.2f}% next_trigger=${_display_money(row.get('next_trigger_price')):.6f}"
+            )
     else:
         print('- promotion: none')
     if demotion_blocked:
         for row in demotion_blocked[:5]:
-            print(f"- context-cleared/demotion-blocked {row['symbol']}: status={row.get('status')} blocker={row.get('blocker')} dist={_display_money(row.get('distance_pct')):.2f}%")
+            print(
+                f"- context-cleared/demotion-blocked {row['symbol']}: status={row.get('status')} blocker={row.get('blocker')} "
+                f"dist={_display_money(row.get('distance_pct')):.2f}% move_to_trigger={_display_money(row.get('next_price_move_pct')):.2f}%"
+            )
     else:
         print('- context-cleared/demotion-blocked: none')
     if demotion_overridden:
         for row in demotion_overridden[:5]:
-            print(f"- demotion-overridden {row['symbol']}: status={row.get('status')} blocker_type={row.get('blocker_type')} blocker={row.get('blocker')} dist={_display_money(row.get('distance_pct')):.2f}%")
+            print(
+                f"- demotion-overridden {row['symbol']}: status={row.get('status')} blocker_type={row.get('blocker_type')} "
+                f"blocker={row.get('blocker')} dist={_display_money(row.get('distance_pct')):.2f}% "
+                f"move_to_trigger={_display_money(row.get('next_price_move_pct')):.2f}%"
+            )
     else:
         print('- demotion-overridden: none')
     if blocked_candidates:
         for row in blocked_candidates[:5]:
-            print(f"- blocked {row['symbol']}: status={row.get('status')} blocker_type={row.get('blocker_type', 'other')} blocker={row.get('blocker')} dist={_display_money(row.get('distance_pct')):.2f}%")
+            print(
+                f"- blocked {row['symbol']}: status={row.get('status')} blocker_type={row.get('blocker_type', 'other')} "
+                f"blocker={row.get('blocker')} dist={_display_money(row.get('distance_pct')):.2f}% "
+                f"move_to_trigger={_display_money(row.get('next_price_move_pct')):.2f}% secondary={row.get('secondary_blocker', 'none')}"
+            )
     else:
         print('- blocked: none')
 
