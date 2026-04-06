@@ -96,4 +96,10 @@ At the time of export:
 
 ## Portability note
 
-Some code still contains absolute `/home/brimigs/...` paths because this project was exported from a live operating environment. If you move the project, the first portability pass should focus on converting those paths into environment variables or relative config.
+The main spot-bot entrypoints now use shared runtime config helpers:
+
+- `runtime-config.mjs`
+- `trading_system/runtime_config.py`
+- `scripts/bootstrap.sh`
+
+Those helpers remove the original `/home/brimigs/...` dependency from the core exported spot workflow. Some secondary helper/report scripts and tests still reflect the source environment and can be cleaned up in a later pass.
