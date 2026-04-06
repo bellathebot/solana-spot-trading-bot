@@ -1,0 +1,58 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  portable-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Syntax checks
+        run: |
+          node --check runtime-config.mjs
+          node --check monitor.mjs
+          node --check auto-trade.mjs
+          python -m py_compile \
+            trading_system/runtime_config.py \
+            trading_system/trading_db.py \
+            trading_system/trading_db_cli.py \
+            trading_system/sync_trading_db.py \
+            trading_system/daily_analytics_report.py \
+            trading_system/spot_live_candidate_summary.py \
+            trading_system/spot_manual_review_queue.py \
+            trading_system/spot_manual_review_digest.py \
+            trading_system/spot_manual_review_alert_check.py \
+            trading_system/spot_review_dashboard_summary.py \
+            trading_system/spot_telegram_notifier.py \
+            trading_system/telegram_trade_reply_bridge.py \
+            trading_system/whale_scanner.py
+
+      - name: Run portable tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          SPOT_BOT_REPO_ROOT: ${{ github.workspace }}
+        run: |
+          python -m unittest \
+            trading_system.tests.test_spot_stack \
+            trading_system.tests.test_accounting_audit
