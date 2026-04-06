@@ -4,10 +4,8 @@ import json
 import sqlite3
 from pathlib import Path
 
-ROOT = Path('/home/brimigs')
-DATA_DIR = ROOT / '.trading-data'
-DB_PATH = DATA_DIR / 'trading.db'
-QUEUE_FILE = DATA_DIR / 'spot_recovery_manual_review.jsonl'
+from trading_system.runtime_config import DATA_DIR, DB_PATH, QUEUE_FILE
+
 NOTIFIER_HEALTH_FILE = DATA_DIR / 'telegram-bridge' / 'spot_notifier_health_state.json'
 
 
