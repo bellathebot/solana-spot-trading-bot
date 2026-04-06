@@ -1844,8 +1844,13 @@ def _build_gate_decision(row: dict, scope: str, pressure: str | None = None) -> 
        pressure=pressure,
    )
    tier_penalty = _tier_penalty(row.get('avg_signal_tier'))
-   name = row['strategy_tag'] if scope == 'strategy' else row['symbol']
-   insufficient_label = 'sample' if scope == 'strategy' else 'symbol sample'
+   if scope == 'strategy':
+       name = row['strategy_tag']
+   elif scope == 'pair':
+       name = f"{row['strategy_tag']}::{row['symbol']}"
+   else:
+       name = row['symbol']
+   insufficient_label = 'sample' if scope == 'strategy' else 'pair sample' if scope == 'pair' else 'symbol sample'
    if not row['sample_sufficient']:
        decision = 'insufficient_sample'
        decision_reason = f"Insufficient {insufficient_label} ({row['candidate_count']}/{row['min_sample_size']}) for promotion or demotion."
@@ -1877,6 +1882,8 @@ def _build_gate_decision(row: dict, scope: str, pressure: str | None = None) -> 
        'avg_signal_tier': row.get('avg_signal_tier'),
        'symbol_tier_penalty': tier_penalty,
        'pressure': pressure or 'neutral',
+       'strategy_tag': row.get('strategy_tag'),
+       'symbol': row.get('symbol'),
    }
 
 
@@ -2421,11 +2428,15 @@ def get_strategy_execution_policy(db_path: Path | str, min_trades: int = 2, min_
        'paused_strategies': controls['paused_strategies'],
        'promotion_rules': report['promotion_rules'],
        'symbol_promotion_rules': report['symbol_promotion_rules'],
+       'pair_promotion_rules': report.get('pair_promotion_rules', []),
        'promoted_strategies': report['promoted_strategies'],
        'demoted_strategies': report['demoted_strategies'],
        'promoted_symbols': report['promoted_symbols'],
        'demoted_symbols': report['demoted_symbols'],
+       'promoted_pairs': report.get('promoted_pairs', []),
+       'demoted_pairs': report.get('demoted_pairs', []),
        'insufficient_sample_strategies': report['insufficient_sample_strategies'],
+       'insufficient_sample_pairs': report.get('insufficient_sample_pairs', []),
        'strategy_health': report['strategy_health'],
        'execution_scores': report['execution_scores'],
        'candidate_volume_by_symbol': report['candidate_volume_by_symbol'],
@@ -3979,6 +3990,10 @@ COUNT(*) AS wallet_count,
            _build_gate_decision(row, 'symbol', pressure=symbol_pressure_map.get(row['symbol'], 'neutral'))
            for row in candidate_outcomes_by_symbol
        ]
+       pair_promotion_rules = [
+           _build_gate_decision(row, 'pair', pressure=symbol_pressure_map.get(row['symbol'], 'neutral'))
+           for row in candidate_outcomes_by_pair
+       ]
        symbol_rule_map = {(r['name'], r['status']): r for r in symbol_promotion_rules}
        execution_scores = []
        for row in candidate_outcomes_by_symbol:
@@ -4013,6 +4028,9 @@ COUNT(*) AS wallet_count,
        insufficient_sample_strategies = [row for row in promotion_rules if row['decision'] == 'insufficient_sample']
        promoted_symbols = [row for row in symbol_promotion_rules if row['decision'] == 'promote']
        demoted_symbols = [row for row in symbol_promotion_rules if row['decision'] == 'demote']
+       promoted_pairs = [row for row in pair_promotion_rules if row['decision'] == 'promote']
+       demoted_pairs = [row for row in pair_promotion_rules if row['decision'] == 'demote']
+       insufficient_sample_pairs = [row for row in pair_promotion_rules if row['decision'] == 'insufficient_sample']
        spot_candidate_pairs = []
        for row in candidate_outcomes_by_pair:
            pressure = symbol_pressure_map.get(row['symbol'], 'neutral')
@@ -4136,11 +4154,15 @@ COUNT(*) AS wallet_count,
            'missed_opportunities': missed_opportunities,
            'promotion_rules': promotion_rules,
            'symbol_promotion_rules': symbol_promotion_rules,
+           'pair_promotion_rules': pair_promotion_rules,
            'promoted_strategies': promoted_strategies,
            'demoted_strategies': demoted_strategies,
            'promoted_symbols': promoted_symbols,
            'demoted_symbols': demoted_symbols,
+           'promoted_pairs': promoted_pairs,
+           'demoted_pairs': demoted_pairs,
            'insufficient_sample_strategies': insufficient_sample_strategies,
+           'insufficient_sample_pairs': insufficient_sample_pairs,
            'execution_scores': execution_scores,
            'recommendations': recommendations,
            'deployment_mode_recommendation': deployment_mode_recommendation,
