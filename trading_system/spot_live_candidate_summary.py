@@ -6,9 +6,9 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
-ROOT = Path('/home/brimigs')
-DB_PATH = ROOT / '.trading-data' / 'trading.db'
-SPOT_APPROVAL_FILE = ROOT / '.trading-data' / 'telegram-bridge' / 'spot_live_approval.json'
+from trading_system.runtime_config import BRIDGE_DIR, DB_PATH, MONITOR_PATH, build_path_env
+
+SPOT_APPROVAL_FILE = BRIDGE_DIR / 'spot_live_approval.json'
 LIVE_SYMBOLS = ['SOL', 'BTC', 'JUP', 'PYTH', 'RAY', 'WIF']
 MIN_LIQUIDITY_USD = 100000
 SYMBOL_MIN_LIQUIDITY_USD = {
@@ -22,11 +22,11 @@ def now_iso() -> str:
 
 def run_monitor_json() -> dict:
     res = subprocess.run(
-        ['node', '/home/brimigs/monitor.mjs', '--json'],
+        ['node', str(MONITOR_PATH), '--json'],
         capture_output=True,
         text=True,
         timeout=180,
-        env={'PATH': f"/home/brimigs/.hermes/node/bin:/home/brimigs/.cargo/bin:{__import__('os').environ.get('PATH', '')}", **__import__('os').environ},
+        env={'PATH': build_path_env(), **__import__('os').environ},
     )
     if res.returncode != 0:
         raise RuntimeError(res.stderr.strip() or res.stdout.strip() or 'monitor failed')
