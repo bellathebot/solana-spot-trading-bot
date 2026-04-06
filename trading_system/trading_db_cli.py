@@ -5,8 +5,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-sys.path.insert(0, '/home/brimigs')
-
+from trading_system.runtime_config import DB_PATH
 from trading_system.trading_db import (
     get_accounting_audit,
     get_open_positions,
@@ -40,7 +39,7 @@ def read_payload() -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description='Record trading events into SQLite')
     parser.add_argument('command', choices=['record-snapshot', 'record-trade', 'record-signal', 'record-whale', 'record-event', 'strategy-controls', 'open-positions', 'accounting-audit', 'record-perp-market-snapshot', 'record-perp-account-snapshot', 'record-perp-position', 'record-perp-order', 'record-perp-fill', 'record-risk-event', 'perp-positions', 'perp-summary', 'record-perp-candidate', 'perp-market-history', 'perp-executor-state', 'recent-trades', 'recent-system-events'])
-    parser.add_argument('--db', default='/home/brimigs/.trading-data/trading.db')
+    parser.add_argument('--db', default=str(DB_PATH))
     parser.add_argument('--min-trades', type=int, default=2)
     parser.add_argument('--min-realized-pnl-usd', type=float, default=0.0)
     parser.add_argument('--minutes', type=int, default=180)
