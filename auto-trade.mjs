@@ -109,6 +109,9 @@ const PAPER_DRAWDOWN_WARN_USD = parseFloat(process.env.AUTO_TRADER_PAPER_DRAWDOW
 const MAX_CONSECUTIVE_LOSSES = parseInt(process.env.AUTO_TRADER_MAX_CONSECUTIVE_LOSSES || '3', 10);
 const SPOT_RECOVERY_MAX_STALE_BEFORE_PAUSE = parseInt(process.env.AUTO_TRADER_SPOT_RECOVERY_MAX_STALE_BEFORE_PAUSE || '1', 10);
 const SPOT_RECOVERY_MAX_AMBIGUOUS_BEFORE_PAUSE = parseInt(process.env.AUTO_TRADER_SPOT_RECOVERY_MAX_AMBIGUOUS_BEFORE_PAUSE || '2', 10);
+const PULLBACK_CONTINUATION_MAX_DISTANCE_PCT = parseFloat(process.env.AUTO_TRADER_PULLBACK_CONTINUATION_MAX_DISTANCE_PCT || '2');
+const PULLBACK_CONTINUATION_MIN_CHANGE_24H = parseFloat(process.env.AUTO_TRADER_PULLBACK_CONTINUATION_MIN_CHANGE_24H || '1');
+const PULLBACK_CONTINUATION_MAX_CHANGE_24H = parseFloat(process.env.AUTO_TRADER_PULLBACK_CONTINUATION_MAX_CHANGE_24H || '8');
 
 const STRATEGY_RULES = {
   mean_reversion_near_buy: {
@@ -120,6 +123,11 @@ const STRATEGY_RULES = {
     family: 'breakout_retest',
     entry: 'near_buy_probe_with_ranked_paper_gate',
     exit: 'partial_profit_or_stop_or_time_stop',
+  },
+  pullback_continuation_tier1: {
+    family: 'pullback_continuation',
+    entry: 'tier1_pullback_in_positive_context_above_buy_threshold',
+    exit: 'target_or_stop_or_time_stop',
   },
   paper_partial_profit_exit: {
     family: 'exit',
@@ -1752,15 +1760,17 @@ async function main() {
       const wantsPaperProbeBuy = MODE !== 'live' && !tinyPilotSymbol && target.buyBelow && price > target.buyBelow && nearBuyPct !== null && nearBuyPct <= PAPER_NEAR_BUY_ENTRY_PCT;
       const wantsTinyPilotProbe = MODE !== 'live' && tinyPilotSymbol && TINY_LIVE_PILOT_ALLOW_NEAR_BUY_PROBES && target.buyBelow && price > target.buyBelow && nearBuyPct !== null && nearBuyPct <= PAPER_NEAR_BUY_ENTRY_PCT;
       const shouldPaperProbeBuy = (wantsPaperProbeBuy || wantsTinyPilotProbe) && paperExecutionEligibility(target, 'near_buy_probe');
-      const buySignalKind = shouldPaperProbeBuy ? 'near_buy_probe' : 'hard_buy';
-      const shouldAttemptBuy = Boolean(target.buyBelow && price <= target.buyBelow) || shouldPaperProbeBuy;
+      const wantsPullbackContinuationBuy = !tinyPilotSymbol && target.tier === 1 && target.buyBelow && price > target.buyBelow && nearBuyPct !== null && nearBuyPct <= PULLBACK_CONTINUATION_MAX_DISTANCE_PCT && change24h >= PULLBACK_CONTINUATION_MIN_CHANGE_24H && change24h <= PULLBACK_CONTINUATION_MAX_CHANGE_24H && ['stable', 'trend_up'].includes(regimeTag);
+      const usePullbackContinuation = wantsPullbackContinuationBuy && !shouldPaperProbeBuy;
+      const buySignalKind = usePullbackContinuation ? 'pullback_buy' : (shouldPaperProbeBuy ? 'near_buy_probe' : 'hard_buy');
+      const shouldAttemptBuy = Boolean(target.buyBelow && price <= target.buyBelow) || shouldPaperProbeBuy || usePullbackContinuation;
       if ((MODE !== 'live') && wantsPaperProbeBuy && !shouldPaperProbeBuy) {
         log(`${symbol} paper near-buy probe skipped: tier ${target.tier} does not allow probe execution.`);
         recordSystemEvent('paper_tier_probe_skip', 'info', `Skipped paper near-buy probe for ${symbol} because tier policy disallows it`, { symbol, tier: target.tier, mode: MODE, signalKind: 'near_buy_probe' });
         recordSignalCandidate({ ts: signalTs, source: 'auto-trade.mjs', symbol, signal_type: 'buy_setup', strategy_tag: 'paper_near_buy_probe', side: 'buy', price, reference_level: target.buyBelow, distance_pct: nearBuyPct, liquidity, status: 'skipped', reason: 'paper_tier_probe_ineligible', metadata: { mode: MODE, tier: target.tier, paperEligible: target.paperEligible, liveEligible: target.liveEligible } });
       }
       if (shouldAttemptBuy) {
-        const baseStrategyTag = tinyPilotSymbol ? TINY_LIVE_PILOT_STRATEGY_TAG : (shouldPaperProbeBuy ? 'paper_near_buy_probe' : 'mean_reversion_near_buy');
+        const baseStrategyTag = tinyPilotSymbol ? TINY_LIVE_PILOT_STRATEGY_TAG : (usePullbackContinuation ? 'pullback_continuation_tier1' : (shouldPaperProbeBuy ? 'paper_near_buy_probe' : 'mean_reversion_near_buy'));
         const isMeanReversionStrategy = baseStrategyTag === 'mean_reversion_near_buy' || baseStrategyTag === 'paper_near_buy_probe' || tinyPilotSymbol;
         if (tinyPilotSymbol) {
           const pilotContext = classifyTinyLivePilotContext({ symbol, regimeTag, change24h, marketChange24h });
@@ -2072,7 +2082,7 @@ async function main() {
           const reason = `Projected buy would exceed daily limits for ${symbol}; skipping buy.`;
           log(reason);
           recordSystemEvent('projected_buy_cap_skip', 'warning', reason, { mode: MODE, symbol, projectedTradeCount, projectedBuyNotional, maxDailyTrades: MAX_DAILY_TRADES, maxDailyNotionalUsd: MAX_DAILY_NOTIONAL_USD });
-          recordSignalCandidate({ ts: signalTs, source: 'auto-trade.mjs', symbol, signal_type: shouldPaperProbeBuy ? 'near_buy_probe' : 'hard_buy', strategy_tag: shouldPaperProbeBuy ? 'paper_near_buy_probe' : 'mean_reversion_near_buy', side: 'buy', price, reference_level: target.buyBelow, distance_pct: nearBuyPct, liquidity, score: entryScore.score, regime_tag: regimeTag, status: 'skipped', reason: 'projected_daily_limit', metadata: { ...scoreMetadata, projectedTradeCount, projectedBuyNotional, maxDailyTrades: MAX_DAILY_TRADES, maxDailyNotionalUsd: MAX_DAILY_NOTIONAL_USD } });
+          recordSignalCandidate({ ts: signalTs, source: 'auto-trade.mjs', symbol, signal_type: usePullbackContinuation ? 'pullback_buy' : (shouldPaperProbeBuy ? 'near_buy_probe' : 'hard_buy'), strategy_tag: usePullbackContinuation ? 'pullback_continuation_tier1' : (shouldPaperProbeBuy ? 'paper_near_buy_probe' : 'mean_reversion_near_buy'), side: 'buy', price, reference_level: target.buyBelow, distance_pct: nearBuyPct, liquidity, score: entryScore.score, regime_tag: regimeTag, status: 'skipped', reason: 'projected_daily_limit', metadata: { ...scoreMetadata, projectedTradeCount, projectedBuyNotional, maxDailyTrades: MAX_DAILY_TRADES, maxDailyNotionalUsd: MAX_DAILY_NOTIONAL_USD } });
           continue;
         }
 
@@ -2081,7 +2091,7 @@ async function main() {
         const buyReason = shouldPaperProbeBuy
           ? `Paper probe buy: ${symbol} is within ${nearBuyPct.toFixed(2)}% of buy target $${target.buyBelow}`
           : `Price $${price.toFixed(6)} <= target $${target.buyBelow}`;
-        recordSignalCandidate({ ts: signalTs, source: 'auto-trade.mjs', symbol, signal_type: shouldPaperProbeBuy ? 'near_buy_probe' : 'hard_buy', strategy_tag: shouldPaperProbeBuy ? 'paper_near_buy_probe' : 'mean_reversion_near_buy', side: 'buy', price, reference_level: target.buyBelow, distance_pct: nearBuyPct, liquidity, score: entryScore.score, regime_tag: regimeTag, decision_id: decisionId, status: 'candidate', reason: buyReason, metadata: { ...scoreMetadata, paper_lane: paperLane, planned_size_usd: buyAmount, minEntryScore: minEntryScoreForSymbol } });
+        recordSignalCandidate({ ts: signalTs, source: 'auto-trade.mjs', symbol, signal_type: usePullbackContinuation ? 'pullback_buy' : (shouldPaperProbeBuy ? 'near_buy_probe' : 'hard_buy'), strategy_tag: usePullbackContinuation ? 'pullback_continuation_tier1' : (shouldPaperProbeBuy ? 'paper_near_buy_probe' : 'mean_reversion_near_buy'), side: 'buy', price, reference_level: target.buyBelow, distance_pct: nearBuyPct, liquidity, score: entryScore.score, regime_tag: regimeTag, decision_id: decisionId, status: 'candidate', reason: buyReason, metadata: { ...scoreMetadata, paper_lane: paperLane, planned_size_usd: buyAmount, minEntryScore: minEntryScoreForSymbol } });
         log(`🟢 BUY SIGNAL: ${symbol} at $${price.toFixed(6)} — buying $${buyAmount.toFixed(2)} worth | ${buyReason}`);
 
         const liveSpotApproval = MODE === 'live'
@@ -2102,13 +2112,13 @@ async function main() {
             quotePriceImpact: priceImpact,
             reason: buyReason,
           }));
-          structuredSkip('spot_live_approval_required', `Awaiting Telegram approval for live spot buy ${symbol}`, { severity: 'warning', mode: MODE, symbol, decisionId, approvalIntent, buyAmount, price, regimeTag, regimeDetail: regimeContext.detail, regimeExplanation: regimeContext.explanation, scoreSummary: summarizeScoreComponents(entryScore.components) }, { ts: signalTs, source: 'auto-trade.mjs', symbol, signal_type: shouldPaperProbeBuy ? 'near_buy_probe' : 'hard_buy', strategy_tag: shouldPaperProbeBuy ? 'paper_near_buy_probe' : 'mean_reversion_near_buy', side: 'buy', price, reference_level: target.buyBelow, distance_pct: nearBuyPct, liquidity, score: entryScore.score, regime_tag: regimeTag, status: 'skipped', reason: 'awaiting_spot_live_approval', metadata: { ...scoreMetadata, approval_intent: approvalIntent, planned_size_usd: buyAmount, minEntryScore: minEntryScoreForSymbol } });
+          structuredSkip('spot_live_approval_required', `Awaiting Telegram approval for live spot buy ${symbol}`, { severity: 'warning', mode: MODE, symbol, decisionId, approvalIntent, buyAmount, price, regimeTag, regimeDetail: regimeContext.detail, regimeExplanation: regimeContext.explanation, scoreSummary: summarizeScoreComponents(entryScore.components) }, { ts: signalTs, source: 'auto-trade.mjs', symbol, signal_type: usePullbackContinuation ? 'pullback_buy' : (shouldPaperProbeBuy ? 'near_buy_probe' : 'hard_buy'), strategy_tag: usePullbackContinuation ? 'pullback_continuation_tier1' : (shouldPaperProbeBuy ? 'paper_near_buy_probe' : 'mean_reversion_near_buy'), side: 'buy', price, reference_level: target.buyBelow, distance_pct: nearBuyPct, liquidity, score: entryScore.score, regime_tag: regimeTag, status: 'skipped', reason: 'awaiting_spot_live_approval', metadata: { ...scoreMetadata, approval_intent: approvalIntent, planned_size_usd: buyAmount, minEntryScore: minEntryScoreForSymbol } });
           continue;
         }
 
         try {
           const command = buildSpotSwapCommand('USDC', symbol, buyAmount.toFixed(2));
-          const buyStrategyTag = shouldPaperProbeBuy ? 'paper_near_buy_probe' : 'mean_reversion_near_buy';
+          const buyStrategyTag = usePullbackContinuation ? 'pullback_continuation_tier1' : (shouldPaperProbeBuy ? 'paper_near_buy_probe' : 'mean_reversion_near_buy');
           const buyJournalKey = `spot:${decisionId}`;
           if (MODE === 'live') {
             upsertSpotTradeJournalEntry(buyJournalKey, {
@@ -2174,7 +2184,7 @@ async function main() {
               log(`⚠️ ${symbol} buy quantity inferred via fallback (${executedBuy.source}). qty=${executedBuy.quantity}`);
               recordSystemEvent('trade_quantity_fallback', 'warning', `Inferred buy quantity for ${symbol} using fallback path`, { mode: MODE, symbol, quantity: executedBuy.quantity, source: executedBuy.source, price, buyAmount });
             }
-            recordSignalCandidate({ ts: signalTs, source: 'auto-trade.mjs', symbol, signal_type: shouldPaperProbeBuy ? 'near_buy_probe' : 'hard_buy', strategy_tag: buyStrategyTag, side: 'buy', price, reference_level: target.buyBelow, distance_pct: nearBuyPct, liquidity, quote_price_impact: priceImpact, score: entryScore.score, regime_tag: regimeTag, decision_id: decisionId, status: 'executed', reason: buyReason, metadata: { ...scoreMetadata, paper_lane: paperLane, planned_size_usd: buyAmount, executed_quantity: executedBuy.quantity, quantity_source: executedBuy.source, minEntryScore: minEntryScoreForSymbol } });
+            recordSignalCandidate({ ts: signalTs, source: 'auto-trade.mjs', symbol, signal_type: usePullbackContinuation ? 'pullback_buy' : (shouldPaperProbeBuy ? 'near_buy_probe' : 'hard_buy'), strategy_tag: buyStrategyTag, side: 'buy', price, reference_level: target.buyBelow, distance_pct: nearBuyPct, liquidity, quote_price_impact: priceImpact, score: entryScore.score, regime_tag: regimeTag, decision_id: decisionId, status: 'executed', reason: buyReason, metadata: { ...scoreMetadata, paper_lane: paperLane, planned_size_usd: buyAmount, executed_quantity: executedBuy.quantity, quantity_source: executedBuy.source, minEntryScore: minEntryScoreForSymbol } });
             const trade = {
               ts: new Date().toISOString(),
               symbol,
