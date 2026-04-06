@@ -34,7 +34,7 @@ This repository packages the current spot-trading codebase into a standalone pro
 - `docs/`
 - `package.json`
 
-See `docs/architecture.md` and `docs/operations.md` for more detail.
+See `docs/architecture.md`, `docs/operations.md`, and `docs/setup.md` for more detail.
 
 ## Safety posture
 
@@ -75,7 +75,7 @@ Runtime dependencies in this repo are intentionally minimal:
   - Jupiter CLI (`jup`)
   - Helius CLI (`helius`)
 
-The current code also expects a local environment with SQLite and access to Telegram Bot API credentials if Telegram workflows are enabled.
+The current code also expects a local environment with SQLite and access to Telegram Bot API credentials if Telegram workflows are enabled. Core entrypoints now use env-driven runtime config helpers so the project no longer depends on the original `/home/brimigs` layout for basic operation.
 
 ## Quick start
 
@@ -144,4 +144,4 @@ This export excludes local secrets and machine-specific runtime data, including:
 
 ## Notes
 
-This repository is an extracted application snapshot from an actively iterated trading environment. Some paths remain absolute and may need adaptation if you move the project to a different machine layout.
+This repository is an extracted application snapshot from an actively iterated trading environment. A portability pass added repo-local runtime config helpers for the main spot entrypoints, but some secondary helper scripts and test fixtures still reflect the source environment and may need a later cleanup.
