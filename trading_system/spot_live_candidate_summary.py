@@ -231,6 +231,34 @@ def main():
     context_cleared_but_demotion_blocked = [row for row in rows if row['status'] in {'buy_ready', 'near_buy'} and row['blocker_type'] == 'demotion']
     blocked_candidates = [row for row in rows if row['status'] in {'buy_ready', 'near_buy'} and row['blocker'] != 'no_recent_blocker' and row['blocker_type'] != 'demotion_overridden']
 
+    family_competition = {}
+    for row in payload.get('scored_signals', []):
+        symbol = row.get('symbol')
+        if symbol not in LIVE_SYMBOLS:
+            continue
+        family_competition.setdefault(symbol, []).append({
+            'strategy_tag': row.get('strategy_tag') or ('pullback_continuation_tier1' if row.get('signal_type') == 'pullback_buy' else 'mean_reversion_near_buy'),
+            'signal_type': row.get('signal_type'),
+            'score': row.get('score'),
+            'regime_tag': row.get('regime_tag'),
+            'regime_detail': row.get('regime_detail'),
+        })
+    strategy_family_competition = []
+    for symbol, lanes in sorted(family_competition.items()):
+        ranked_lanes = sorted(lanes, key=lambda lane: float(lane.get('score') or 0), reverse=True)
+        top_lane = ranked_lanes[0] if ranked_lanes else None
+        runner_up = ranked_lanes[1] if len(ranked_lanes) > 1 else None
+        strategy_family_competition.append({
+            'symbol': symbol,
+            'top_strategy': top_lane.get('strategy_tag') if top_lane else None,
+            'top_signal_type': top_lane.get('signal_type') if top_lane else None,
+            'top_score': top_lane.get('score') if top_lane else None,
+            'runner_up_strategy': runner_up.get('strategy_tag') if runner_up else None,
+            'runner_up_signal_type': runner_up.get('signal_type') if runner_up else None,
+            'runner_up_score': runner_up.get('score') if runner_up else None,
+            'lanes': ranked_lanes,
+        })
+
     summary_payload = {
         'summary_ts': payload.get('ts') or now_iso(),
         'top_candidate': rows[0] if rows else None,
@@ -239,6 +267,7 @@ def main():
         'demotion_overridden_candidates': demotion_overridden_candidates,
         'context_cleared_but_demotion_blocked': context_cleared_but_demotion_blocked,
         'blocked_candidates': blocked_candidates,
+        'strategy_family_competition': strategy_family_competition,
     }
     if not args.no_persist:
         persist_summary(Path(args.db), rows, summary_payload)
@@ -268,6 +297,11 @@ def main():
     lines.append(f"- context_cleared_but_demotion_blocked: {demotion_blocked_text}")
     lines.append(f"- demotion_overridden_candidates: {demotion_overridden_text}")
     lines.append(f"- blocked_candidates: {blocked_text}")
+    family_text = ', '.join(
+        f"{row['symbol']}({row.get('top_strategy')}:{row.get('top_score')} vs {row.get('runner_up_strategy')}:{row.get('runner_up_score')})"
+        for row in strategy_family_competition[:3]
+    ) or 'none'
+    lines.append(f"- strategy_family_competition: {family_text}")
     print('\n'.join(lines))
 
 
