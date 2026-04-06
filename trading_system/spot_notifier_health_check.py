@@ -4,12 +4,11 @@ import json
 import sqlite3
 from pathlib import Path
 
-ROOT = Path('/home/brimigs')
-DATA_DIR = ROOT / '.trading-data'
-BRIDGE_DIR = DATA_DIR / 'telegram-bridge'
+from trading_system.runtime_config import BRIDGE_DIR, DB_PATH
+
 STATE_FILE = BRIDGE_DIR / 'spot_executor_alert_state.json'
 HEALTH_STATE_FILE = BRIDGE_DIR / 'spot_notifier_health_state.json'
-DEFAULT_DB = DATA_DIR / 'trading.db'
+DEFAULT_DB = DB_PATH
 EVENT_TYPES = (
     'spot_trade_submit_timeout_ambiguous',
     'spot_trade_journal_stale_submitted',
