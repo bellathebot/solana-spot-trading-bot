@@ -3,9 +3,8 @@ import argparse
 import json
 from pathlib import Path
 
-ROOT = Path('/home/brimigs')
-DATA_DIR = ROOT / '.trading-data'
-QUEUE_FILE = DATA_DIR / 'spot_recovery_manual_review.jsonl'
+from trading_system.runtime_config import DATA_DIR, QUEUE_FILE
+
 HEALTH_FILE = DATA_DIR / 'telegram-bridge' / 'spot_notifier_health_state.json'
 
 
