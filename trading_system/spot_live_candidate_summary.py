@@ -75,6 +75,33 @@ def status_and_distance(row: dict):
     return 'watch', distance
 
 
+def candidate_visibility_fields(symbol: str, row: dict, blocker_type: str, blocker_reason: str) -> dict:
+    price = float(row.get('price') or 0)
+    buy = float(row.get('buyBelow') or 0)
+    liquidity = float(row.get('liquidity') or 0)
+    threshold_gap = max(0.0, price - buy) if buy > 0 else 0.0
+    next_price_move_pct = max(0.0, ((price - buy) / price) * 100) if price > 0 and buy > 0 else 0.0
+    secondary_blocker = 'none'
+    if blocker_type == 'none' and buy > 0 and price > buy:
+        blocker_type = 'price_not_at_threshold'
+        blocker_reason = f'Needs ${threshold_gap:.6f} lower price to reach buy trigger'
+    if blocker_type == 'none' and liquidity < min_liquidity_threshold_usd(symbol):
+        secondary_blocker = 'liquidity'
+    elif blocker_type == 'price_not_at_threshold':
+        secondary_blocker = 'none'
+    return {
+        'next_trigger_price': buy,
+        'distance_to_buy_pct': next_price_move_pct,
+        'next_price_move_pct': next_price_move_pct,
+        'price_gap_abs': threshold_gap,
+        'top_blocker': blocker_type,
+        'secondary_blocker': secondary_blocker,
+        'blocker_explanation': blocker_reason,
+        'live_eligible': bool(row.get('liveEligible', False)),
+        'paper_eligible': bool(row.get('paperEligible', False)),
+    }
+
+
 def recent_blockers(db_path: Path) -> dict:
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
@@ -182,6 +209,7 @@ def main():
         else:
             blocker_reason = 'no_recent_blocker'
             blocker_type = 'none'
+        visibility = candidate_visibility_fields(symbol, row, blocker_type, blocker_reason)
         rows.append({
             'symbol': symbol,
             'price': float(row.get('price') or 0),
@@ -190,8 +218,9 @@ def main():
             'liquidity': float(row.get('liquidity') or 0),
             'status': status,
             'distance_pct': distance,
-            'blocker': blocker_reason,
-            'blocker_type': blocker_type,
+            'blocker': visibility['blocker_explanation'],
+            'blocker_type': visibility['top_blocker'],
+            **visibility,
         })
 
     rank = {'buy_ready': 0, 'near_buy': 1, 'watch': 2}
@@ -221,9 +250,16 @@ def main():
         return
 
     top = rows[0]
-    lines.append(f"- top candidate: {top['symbol']} status={top['status']} price=${top['price']:.6f} buy<${top['buy_below']:.6f} blocker_type={top['blocker_type']} blocker={top['blocker']}")
+    lines.append(
+        f"- top candidate: {top['symbol']} status={top['status']} price=${top['price']:.6f} buy<${top['buy_below']:.6f} "
+        f"move_to_trigger={top['next_price_move_pct']:.2f}% blocker_type={top['blocker_type']} blocker={top['blocker']}"
+    )
     for idx, row in enumerate(rows[:3], start=1):
-        lines.append(f"- #{idx} {row['symbol']} status={row['status']} dist={row['distance_pct']:.2f}% liq=${row['liquidity']:.0f} blocker_type={row['blocker_type']} blocker={row['blocker']}")
+        lines.append(
+            f"- #{idx} {row['symbol']} status={row['status']} dist={row['distance_pct']:.2f}% move_to_trigger={row['next_price_move_pct']:.2f}% "
+            f"liq=${row['liquidity']:.0f} live={row['live_eligible']} paper={row['paper_eligible']} "
+            f"blocker_type={row['blocker_type']} blocker={row['blocker']}"
+        )
     promo_text = ', '.join(f"{row['symbol']}({row['status']})" for row in promotion_candidates[:3]) or 'none'
     demotion_blocked_text = ', '.join(f"{row['symbol']}({row['blocker']})" for row in context_cleared_but_demotion_blocked[:3]) or 'none'
     demotion_overridden_text = ', '.join(f"{row['symbol']}({row['status']})" for row in demotion_overridden_candidates[:3]) or 'none'
